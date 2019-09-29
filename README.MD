@@ -1,2 +1,2 @@
-# App web basata su Django per creare fatture elettronica
-App web basata su Django per creare fatture elettronica secondo FatturaPA versione 1.2.1
+# App web basata su Django per creare fatture elettroniche
+App web basata su Django per creare fatture elettroniche secondo FatturaPA versione 1.2.1
