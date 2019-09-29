@@ -1,0 +1,12 @@
+. /mnt/sdcard/home/django/.private_data
+
+DB_HOST="localhost"
+DB_USER="spine_admin"
+DB_PASSWORD=$SPINE_MYSQL_DB_PASSWORD
+PATH_TO_DB_BACKUP=/mnt/sdcard/spine_zilio_db_backup
+
+# Delete db backup files older than 90 days
+/usr/bin/find ${PATH_TO_DB_BACKUP}/ -type f -mtime +90 -iname '*.sql.gz' -delete
+
+# Backup Seafile mysql db
+/usr/bin/mysqldump -h ${DB_HOST} -u${DB_USER} -p${DB_PASSWORD} spine_site | gzip > ${PATH_TO_DB_BACKUP}/`date +"%Y-%m-%d-%H-%M-%S"`.spine-zilio-db.sql.gz

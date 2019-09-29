@@ -1,0 +1,9 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+{% block content %}
+        <h1>Spiacenti, si è verificato un errore nella gestione della richiesta</h1>
+        <p>L'amministratore del sistema è stato informato</p>
+        <p>Ritorna alla <a href="/">home page</a>.</p>
+{% endblock %}
