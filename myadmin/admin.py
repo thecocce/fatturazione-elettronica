@@ -132,6 +132,59 @@ class ClientAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
 
 my_admin_site.register(Cliente, ClientAdmin)
 
+# Esenzione IVA admin
+
+from fatturazione.models import AliquotaIva
+
+class AliquotaIVAAdmin(admin.ModelAdmin):
+    list_display = ('codice_iva', 'perc_iva', 'natura_esenzione', 'riferimento_normativo', 'riferimento_normativo_cliente')
+    list_display_links = ('codice_iva', )
+    list_per_page = 25
+    ordering = ('codice_iva',)
+
+    def add_view(self, request, form_url='', extra_context=None):
+
+        self.fields = ('codice_iva', 'perc_iva', 'natura_esenzione', 'riferimento_normativo', 'riferimento_normativo_cliente')
+        return super(AliquotaIVAAdmin, self).add_view(request, form_url, extra_context=extra_context)
+
+    def change_view(self,request,object_id,extra_content=None):
+        
+        self.fields = ('codice_iva', 'perc_iva', 'natura_esenzione', 'riferimento_normativo', 'riferimento_normativo_cliente')
+        return super(AliquotaIVAAdmin,self).change_view(request,object_id)
+
+    def get_queryset(self, request):
+
+        return super(AliquotaIVAAdmin, self).get_queryset(request).exclude(perc_iva__isnull=True)
+
+my_admin_site.register(AliquotaIva, AliquotaIVAAdmin)
+
+
+# Modalita' pagamento
+
+from fatturazione.models import ModalitaPagamento
+
+class ModalitaPagamentoAdmin(admin.ModelAdmin):
+    list_display = ('codice_pagamento', 'n_giorni_scadenza', 'codice_pagamento_fattura_elettronica')
+    list_display_links = ('codice_pagamento', )
+    list_per_page = 25
+    ordering = ('codice_pagamento',)
+
+    def add_view(self, request, form_url='', extra_context=None):
+
+        self.fields = ('codice_pagamento', 'n_giorni_scadenza', 'codice_pagamento_fattura_elettronica')
+        return super(ModalitaPagamentoAdmin, self).add_view(request, form_url, extra_context=extra_context)
+
+    def change_view(self,request,object_id,extra_content=None):
+        
+        self.fields = ('codice_pagamento', 'n_giorni_scadenza', 'codice_pagamento_fattura_elettronica')
+        return super(ModalitaPagamentoAdmin,self).change_view(request,object_id)
+
+    def get_queryset(self, request):
+
+        return super(ModalitaPagamentoAdmin, self).get_queryset(request).exclude(attivo=False)
+
+my_admin_site.register(ModalitaPagamento, ModalitaPagamentoAdmin)
+
 # Fatturazione admin
 
 from fatturazione.models import Fattura
@@ -177,7 +230,7 @@ class FatturaAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
 
         """Custom list-view field to show the total value of an invoice"""
 
-        elementi_fattura = ElementoFattura.objects.filter(lnummov=instance.id, iva__isnull=False)
+        elementi_fattura = ElementoFattura.objects.filter(lnummov=instance.id, iva__perc_iva__isnull=False)
         sum = 0.0
         for elemento_fattura in elementi_fattura:
             if elemento_fattura.iva.upper() not in ['8C', '8A','41','36','74', "15", '10']:
@@ -327,13 +380,9 @@ class FatturaAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
                 documento_divisa = create_SubElement(documento_dati_generali, "Divisa", txt = "EUR")
                 documento_data = create_SubElement(documento_dati_generali, "Data", txt = fattura.ddoc.strftime('%Y-%m-%d'))
                 documento_numero = create_SubElement(documento_dati_generali, "Numero", txt = fattura.nrdoc.upper())
-                if fattura.tdoc == 'NC':
-                    documento_causale = create_SubElement(documento_dati_generali, "Causale", txt = "Nota accredito")
-                elif fattura.tdoc == 'FV':
-                    documento_causale = create_SubElement(documento_dati_generali, "Causale", txt = "Fattura vendita")
 
                 ### Dati DDT
-                for elemento_fattura in fattura.elementofattura_set.filter(iva__isnull=True, codart__isnull=True, descri__icontains="Rif. DDT"):
+                for elemento_fattura in fattura.elementofattura_set.filter(iva__perc_iva__isnull=True, codart__isnull=True, descri__icontains="Rif. DDT"):
                     try:
                         ddt_ref = " ".join(elemento_fattura.descri.split())
                         ddt_ref_split = ddt_ref.split()
@@ -349,7 +398,7 @@ class FatturaAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
                 ## Dati beni servizi
                 i = 1
                 riepilogo_somme = {}
-                for elemento_fattura in fattura.elementofattura_set.filter(iva__isnull=False):
+                for elemento_fattura in fattura.elementofattura_set.filter(iva__perc_iva__isnull=False):
                     linea_dettaglio = ET.SubElement(dati_beni_servizi, "DettaglioLinee")
                     linea_numero = create_SubElement(linea_dettaglio, "NumeroLinea", txt = str(i))
                     linea_descrizione = create_SubElement(linea_dettaglio, "Descrizione", txt = "Art. {} - {}".format(elemento_fattura.codart, elemento_fattura.descri).upper()[:1000] if elemento_fattura.codart else elemento_fattura.descri.upper()[:1000])
@@ -365,79 +414,45 @@ class FatturaAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
                     
                     prezzo_totale = elemento_fattura.qto * elemento_fattura.prezzo
                     linea_prezzo_totale = create_SubElement(linea_dettaglio, "PrezzoTotale", txt = "{0:.2f}".format(prezzo_totale))
-                    iva = elemento_fattura.iva.upper()
-                    riepilogo_somme[iva] = riepilogo_somme.get(iva, 0) + prezzo_totale
-                    if iva in ["15"]:
-                        linea_aliquota_iva = create_SubElement(linea_dettaglio, "AliquotaIVA", txt = "0.00")
-                        linea_natura = create_SubElement(linea_dettaglio, "Natura", txt = "N1")
-                    elif iva in ['8C', '8A','41','36','74']:
-                        linea_aliquota_iva = create_SubElement(linea_dettaglio, "AliquotaIVA", txt = "0.00")
-                        linea_natura = create_SubElement(linea_dettaglio, "Natura", txt = "N3")
-                    else:
-                        try:
-                            linea_aliquota_iva = create_SubElement(linea_dettaglio, "AliquotaIVA", txt = "{0:.2f}".format(float(iva)))
-                        except:
-                            raise HttpResponseServerError()
+                    iva = elemento_fattura.iva
+                    riepilogo_somme[iva.codice_iva] = riepilogo_somme.get(iva.codice_iva, 0) + prezzo_totale
+                    
+                    linea_aliquota_iva = create_SubElement(linea_dettaglio, "AliquotaIVA", txt = "{0:.2f}".format(float(iva.perc_iva)))
+                    if iva.natura_esenzione:
+                        linea_natura = create_SubElement(linea_dettaglio, "Natura", txt = iva.natura_esenzione)
+                    
                     i = i + 1 
 
                 ### Riepilogo
                 importo_totale = 0.0
-                for iva, importo in riepilogo_somme.items():
-                    if iva in ['8C', '8A','41','36','74', "15"] or not isfloat(iva):
-                        codice_esenzione = iva
-                        iva = 0.0
-                    else:
-                        codice_esenzione = None
-                        iva = float(iva)
+                for codice_iva, importo in riepilogo_somme.items():
+                    iva = AliquotaIva.objects.get(codice_iva=codice_iva)
                     
-                    riepilogod_dati = ET.SubElement(dati_beni_servizi, "DatiRiepilogo")
+                    riepilogo_dati = ET.SubElement(dati_beni_servizi, "DatiRiepilogo")
 
-                    riepilogo_aliquota_iva = create_SubElement(riepilogod_dati, "AliquotaIVA", txt = "{0:.2f}".format(iva))
-                    
-                    riferimento_normativo = ''
-                    if codice_esenzione:
-                        if codice_esenzione in ["15"]:
-                            linea_natura = create_SubElement(riepilogod_dati, "Natura", txt = "N1")
-                            riferimento_normativo = 'Art. 15 DPR 633/72'
-                        elif codice_esenzione in ['8C']:
-                            linea_natura = create_SubElement(riepilogod_dati, "Natura", txt = "N3")
-                            if fattura.codana.riferiment:
-                                riferimento_normativo = 'Art. 8c DPR 633/72, ' + fattura.codana.riferiment
-                            else:
-                                riferimento_normativo = 'Art. 8c DPR 633/72'
-                        elif codice_esenzione in ['41']:
-                            linea_natura = create_SubElement(riepilogod_dati, "Natura", txt = "N3")
-                            riferimento_normativo = 'Art. 41 DL 331/793'
-                        elif codice_esenzione in ['8A','36','74']:
-                            linea_natura = create_SubElement(riepilogod_dati, "Natura", txt = "N3")
-                    
-                    riepilogo_imponibile_importo = create_SubElement(riepilogod_dati, "ImponibileImporto", txt = "{0:.2f}".format(importo))
-                    imposta = iva/100*importo
+                    riepilogo_aliquota_iva = create_SubElement(riepilogo_dati, "AliquotaIVA", txt = "{0:.2f}".format(iva.perc_iva))
+                    if iva.natura_esenzione:
+                        linea_natura = create_SubElement(riepilogo_dati, "Natura", txt = iva.natura_esenzione)
+
+                    riepilogo_imponibile_importo = create_SubElement(riepilogo_dati, "ImponibileImporto", txt = "{0:.2f}".format(importo))
+                    imposta = float(iva.perc_iva)/100*importo
                     importo_totale = importo_totale + importo + imposta
-                    riepilogo_imposta = create_SubElement(riepilogod_dati, "Imposta", txt = "{0:.2f}".format(imposta))
-                    if riferimento_normativo:
-                        riferimento_normativo = create_SubElement(riepilogod_dati, "RiferimentoNormativo", txt = riferimento_normativo)
+                    riepilogo_imposta = create_SubElement(riepilogo_dati, "Imposta", txt = "{0:.2f}".format(imposta))
+                    if iva.riferimento_normativo:
+                        if iva.riferimento_normativo_cliente and fattura.codana.riferiment:
+                            riferimento_normativo = iva.riferimento_normativo + ', ' + fattura.codana.riferiment
+                        else:
+                            riferimento_normativo = iva.riferimento_normativo
+                        
+                        riferimento_normativo = create_SubElement(riepilogo_dati, "RiferimentoNormativo", txt = riferimento_normativo)
 
                 ## Dati pagamento
 
                 pagamento_condizioni = create_SubElement(dati_pagamento, "CondizioniPagamento", txt = "TP02")
                 pagamento_dettaglio = ET.SubElement(dati_pagamento, "DettaglioPagamento")
-                
-                if fattura.mopag in ['R30', 'RB3', 'S30']:
-                    pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = "MP12")
-                    scadenza = fattura.ddoc + datetime.timedelta(days=30)
-                elif fattura.mopag in ['RB6', 'R60', 'RD6', 'S60']:
-                    pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = "MP12")
-                    scadenza = fattura.ddoc + datetime.timedelta(days=60)
-                elif fattura.mopag in ['R90', 'S90', 'RB9', 'RD9']:
-                    pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = "MP12")
-                    scadenza = fattura.ddoc + datetime.timedelta(days=90)
-                elif fattura.mopag in ['RD']:
-                    pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = "MP05")
-                    scadenza = fattura.ddoc + datetime.timedelta(days=30)
-                else:
-                    pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = "MP12")
-                    scadenza = fattura.ddoc + datetime.timedelta(days=30)
+
+                pagamento_madalita = create_SubElement(pagamento_dettaglio, "ModalitaPagamento", txt = fattura.mopag.codice_pagamento_fattura_elettronica)
+                scadenza = fattura.ddoc + datetime.timedelta(days=fattura.mopag.n_giorni_scadenza)
 
                 scadenza = last_day_of_month(scadenza)
                 pagamento_scadenza = create_SubElement(pagamento_dettaglio, "DataScadenzaPagamento", txt = scadenza.strftime('%Y-%m-%d'))
@@ -445,6 +460,11 @@ class FatturaAdmin(DjangoQLSearchMixin, admin.ModelAdmin):
                 pagamento_importo = create_SubElement(pagamento_dettaglio, "ImportoPagamento", txt = "{0:.2f}".format(importo_totale))
 
                 documento_import_totale = create_SubElement(documento_dati_generali, "ImportoTotaleDocumento", txt = "{0:.2f}".format(importo_totale))
+
+                if fattura.tdoc == 'NC':
+                    documento_causale = create_SubElement(documento_dati_generali, "Causale", txt = "Nota accredito")
+                elif fattura.tdoc == 'FV':
+                    documento_causale = create_SubElement(documento_dati_generali, "Causale", txt = "Fattura vendita")
 
                 xslt = ET.parse(STATIC_ROOT + 'xml/fatturaordinaria_v1.2.1.xsl')
                 transform = ET.XSLT(xslt)
@@ -468,7 +488,7 @@ class ElementoFatturaAdmin(admin.ModelAdmin):
         return super(ElementoFatturaAdmin, self).get_model_perms(request)
 
 my_admin_site.register(Fattura, FatturaAdmin)
-my_admin_site.register(ElementoFattura, ElementoFatturaAdmin)
+# my_admin_site.register(ElementoFattura, ElementoFatturaAdmin)
 
 # Uploads and downloads admin
 
@@ -558,10 +578,22 @@ class UploadAdmin(admin.ModelAdmin):
         latest_fatture = fatture[fatture["NUMMOV"] > latest_fattura_id]
 
         for index, row in latest_fatture.iterrows():
+            
             try:
                 cliente = Cliente.objects.get(codana=row[4].strip().upper())
             except:
                 cliente = None
+
+            row[6] if row[6] == row[6] else None
+
+            if row[6] == row[6]:
+                try:
+                    mopag = ModalitaPagamento.objects.get(codice_pagamento=row[6].strip().upper())
+                except:
+                    mopag = None
+            else:
+                mopag = None
+
             fattura = Fattura.objects.create(
                 id = row[0],
                 tdoc = row[1] if row[1] == row[1] else None,
@@ -569,7 +601,8 @@ class UploadAdmin(admin.ModelAdmin):
                 ddoc = row[3] if row[3] == row[3] else None,
                 codana = cliente,
                 stato = row[5] if row[5] == row[5] else None,
-                mopag = row[6] if row[6] == row[6] else None,
+                old_mopag = row[6] if row[6] == row[6] else None,
+                mopag = mopag,
                 bappoggio = row[7] if row[7] == row[7] else None,
                 speseboll = row[8] if row[8] == row[8] else None,
                 bolli = row[9] if row[9] == row[9] else None,
@@ -629,10 +662,20 @@ class UploadAdmin(admin.ModelAdmin):
         latest_elementi_fatture = elementi_fattura[elementi_fattura["LNUMMOV"] > latest_fattura_id]
 
         for index, row in latest_elementi_fatture.iterrows():
+            
             try:
                 fattura = Fattura.objects.get(id=int(row[0]))
             except:
                 fattura = None
+            
+            if row[12] == row[12]:
+                try:
+                    aliquota_iva = AliquotaIva.objects.get(codice_iva=row[12].strip().upper())
+                except:
+                    aliquota_iva = None
+            else:
+                aliquota_iva = None
+            
             elemento_fattura = ElementoFattura.objects.create(
                 lnummov = fattura,
                 nrr = row[1] if row[1] == row[1] else None,
@@ -646,7 +689,8 @@ class UploadAdmin(admin.ModelAdmin):
                 sconto1 = row[9] if row[9] == row[9] else None,
                 percsc2 = row[10] if row[10] == row[10] else None,
                 percsc3 = row[11] if row[11] == row[11] else None,
-                iva = row[12] if row[12] == row[12] else None,
+                old_iva = row[12] if row[12] == row[12] else None,
+                iva = aliquota_iva,
                 lagente = row[13] if row[13] == row[13] else None,
                 ltprovv = row[14] if row[14] == row[14] else None,
                 lcprovv = row[15] if row[15] == row[15] else None,

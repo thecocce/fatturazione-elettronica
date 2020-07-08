@@ -7,7 +7,8 @@ class Fattura (models.Model):
     ddoc = models.DateField("Data documento", blank=True, null=True)
     codana = models.ForeignKey(Cliente, verbose_name="Cliente", null=True)
     stato = models.CharField(max_length=1, blank=True, null=True)
-    mopag = models.CharField("Modalità pagamento", max_length=5, blank=True, null=True)
+    old_mopag = models.CharField("Modalità pagamento", max_length=5, blank=True, null=True)
+    mopag = models.ForeignKey('ModalitaPagamento', verbose_name = "Modalità pagamento", on_delete=models.PROTECT, blank=False, null=True, default=None)
     bappoggio = models.CharField("Banca d'appoggio", max_length=10, blank=True, null=True)
     speseboll = models.CharField("Spese bollo", max_length=1, blank=True, null=True)
     bolli = models.PositiveSmallIntegerField(blank=True, null=True)
@@ -82,7 +83,8 @@ class ElementoFattura (models.Model):
     sconto1 = models.DecimalField("Percentuale sconto 1", max_digits=14, decimal_places=2, blank=True, null=True)
     percsc2 = models.DecimalField("Percentuale sconto 2", max_digits=4, decimal_places=2, blank=True, null=True)
     percsc3 = models.DecimalField("Percentuale sconto 2", max_digits=4, decimal_places=2, blank=True, null=True)
-    iva = models.CharField("IVA", max_length=3, blank=True, null=True)
+    old_iva = models.CharField("IVA", max_length=3, blank=True, null=True)
+    iva =  models.ForeignKey('AliquotaIva', on_delete=models.PROTECT, blank=True, null=True, default=None)
     lagente = models.CharField("Agente", max_length=6, blank=True, null=True)
     ltprovv = models.CharField("Provvigione agente 1", max_length=1, blank=True, null=True)
     lcprovv = models.CharField("Provvigione agente 2", max_length=5, blank=True, null=True)
@@ -108,3 +110,45 @@ class ElementoFattura (models.Model):
         if self.um:
             self.um = self.um.replace("ø", ".")
         super(ElementoFattura, self).save(force_insert, force_update, *args, **kwargs)
+
+class AliquotaIva (models.Model):
+    codice_iva = models.CharField("codice IVA", max_length=5, blank=False, unique=True)
+    perc_iva = models.DecimalField("percentuale IVA", max_digits=4, decimal_places=2, blank=False, null=True)
+    natura_esenzione = models.CharField("natura esenzione", choices=[('N' + str(i), 'N' + str(i)) for i in range(1,8)], max_length=5, blank=True)
+    riferimento_normativo = models.CharField("riferimento normativo", max_length=50, blank=True)
+    riferimento_normativo_cliente = models.BooleanField('includere riferimento normativo cliente?', default=False)
+    attivo = models.BooleanField('Attiva/disattiva codice', default=True)
+
+    class Meta:
+        verbose_name = 'alituota IVA'
+        verbose_name_plural = 'aliquote IVA'
+
+    def __str__(self):
+        return str(self.codice_iva)
+
+    def save(self, force_insert=False, force_update=False, *args, **kwargs):
+
+        self.codice_iva = self.codice_iva.strip().upper()
+        self.natura_esenzione = self.natura_esenzione.strip().upper()
+        self.riferimento_normativo = self.riferimento_normativo.strip()
+
+        super(AliquotaIva, self).save(force_insert, force_update, *args, **kwargs)
+
+class ModalitaPagamento (models.Model):
+    codice_pagamento = models.CharField("codice pagamento", max_length=5, blank=False, unique=True)
+    n_giorni_scadenza = models.PositiveSmallIntegerField("numero giorni scadenza", blank=False)
+    codice_pagamento_fattura_elettronica = models.CharField("natura esenzione", choices=[('MP' + str(i).zfill(2), 'MP' + str(i).zfill(2)) for i in range(1,18)], max_length=10, blank=False)
+    attivo = models.BooleanField('Attiva/disattiva codice', default=True)
+
+    class Meta:
+        verbose_name = 'modalità pagamento'
+        verbose_name_plural = 'modalità pagamento'
+
+    def __str__(self):
+        return str(self.codice_pagamento)
+
+    def save(self, force_insert=False, force_update=False, *args, **kwargs):
+
+        self.codice_pagamento = self.codice_pagamento.strip().upper()
+
+        super(ModalitaPagamento, self).save(force_insert, force_update, *args, **kwargs)
